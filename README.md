@@ -7,6 +7,8 @@ using [this fix](https://github.com/cozylife/hass_cozylife_local_pull/commit/4c9
 
 > **_NOTE:_**  This Home Assistant component will automatically accept any host fingerprint.
 
+&#x2615; [Buy me a coffee :)](https://paypal.me/davidalind)
+
 ## Wifi vs. VLAN
 
 In Home Assistant you will be able to choose to control `wifi` or `network`.
