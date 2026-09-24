@@ -1,6 +1,7 @@
 # OpenWRT WiFi Switch for Home Assistant
 
 Switch your WiFi on and off using Home Assistant.
+Fork adds keyfile support and converts to async.
 
 ### Installation
 
