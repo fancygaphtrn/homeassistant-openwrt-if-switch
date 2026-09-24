@@ -4,18 +4,17 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.discovery import async_load_platform
 from homeassistant.helpers.typing import ConfigType
 from homeassistant.helpers import config_validation as cv
-from .const import (IFNAME, IFTYPE, HOST, PORT, KEYFILENAME)
+from .const import (IFNAME, HOST, PORT, KEYFILENAME)
 import logging
 
 
 _LOGGER = logging.getLogger(__name__)
 
-DOMAIN = 'openwrt_if_switch'
+DOMAIN = 'openwrt_wifi_switch'
 
 PLATFORM_SCHEMA = vol.Schema(
     {
         vol.Required(IFNAME): cv.string,
-        vol.Required(IFTYPE): cv.string,        
         vol.Required(HOST): cv.string,
         vol.Required(KEYFILENAME): cv.string,
         vol.Required(PORT): cv.string,
@@ -28,7 +27,6 @@ def setup(hass: HomeAssistant, config: ConfigType) -> bool:
     for device in range(len(config[DOMAIN])):
         devices.append({
             "ifname": config[DOMAIN][device][IFNAME],
-            "iftype": config[DOMAIN][device][IFTYPE],
             "host": config[DOMAIN][device][HOST],
             "key_filename": config[DOMAIN][device][KEYFILENAME],
             "port": config[DOMAIN][device][PORT]

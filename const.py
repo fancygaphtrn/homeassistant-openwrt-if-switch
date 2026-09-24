@@ -1,5 +1,4 @@
 IFNAME = "ifname"
-IFTYPE = "iftype"
 HOST = "host"
 KEYFILENAME = "key_filename"
 PORT = "port"
