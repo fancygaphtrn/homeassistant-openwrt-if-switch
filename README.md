@@ -15,7 +15,7 @@ Add the following to your `configuration.yaml` file:
 openwrt_wifi_switch:
 - ifname: "<wifi-interface-ifname>"
   host: "<ssh-host>"
-  username: "<ssh-username>"
-  password: "<ssh-password>"
   port: "<ssh-port>"
+  key_filename: "/config/.ssh/openwrt_key"
 ```
+There are many articals on how to configure keyfile support for ssh and home assistant online.
