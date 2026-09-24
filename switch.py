@@ -6,6 +6,7 @@ from typing import Any
 import asyncssh
 from homeassistant.components.switch import SwitchEntity
 from homeassistant.core import HomeAssistant
+from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.typing import ConfigType, DiscoveryInfoType
 
@@ -23,7 +24,7 @@ async def async_setup_platform(hass: HomeAssistant,
     if DOMAIN not in hass.data or "devices" not in hass.data[DOMAIN]:
         _LOGGER.error("No device configuration found for domain %s", DOMAIN)
         return
-        
+
     async_add_entities([WifiSwitch(device) for device in hass.data[DOMAIN]["devices"]])
 
 
@@ -34,48 +35,86 @@ class WifiSwitch(SwitchEntity):
         """Initialize the switch."""
         self._device = device
         self._attr_is_on = False
+        self._attr_available = True
         self._attr_name = f"{device['host']} interface {device['ifname']}"
         self._attr_unique_id = f"{device['host']}_{device['ifname']}"
         self._attr_icon = "mdi:wifi-strength-4"
 
     async def _async_ssh_execute(self, commands: list[str]) -> list[str]:
-        """Safely open an async connection, execute a sequence of commands, and return outputs."""
-        results = []
+        """Open an async connection and execute a sequence of commands.
+
+        Raises HomeAssistantError if the connection or any command
+        cannot be completed, so callers can distinguish a real failure
+        from a command that legitimately returned no output.
+        """
+        results: list[str] = []
         try:
-            # Connect asynchronously without blocking the HA event loop
             async with asyncssh.connect(
                 host=self._device["host"],
                 port=self._device.get("port", 22),
-                username="root",
+                username=self._device.get("username", "root"),
                 client_keys=[self._device["key_filename"]],
-                known_hosts=None,  # Equivalent to Paramiko's AutoAddPolicy()
+                # If a known_hosts file was configured, use it to verify
+                # the router's host key. Otherwise fall back to no
+                # verification at all (known_hosts=None) -- this is
+                # equivalent to Paramiko's AutoAddPolicy and accepts any
+                # host key, which is a MITM risk. Configure known_hosts
+                # to avoid this.
+                known_hosts=self._device.get("known_hosts"),
                 connect_timeout=5,  # Socket connection timeout
                 login_timeout=5     # Authentication handshake timeout
             ) as conn:
                 for cmd in commands:
                     result = await conn.run(cmd, check=False)
                     _LOGGER.debug("async_ssh_execute cmd %s result %s", cmd, result)
-                    # Strip out trailing/leading whitespaces from the output
+                    if result.exit_status != 0:
+                        raise HomeAssistantError(
+                            f"Command '{cmd}' on {self._device['host']} "
+                            f"exited with status {result.exit_status}: "
+                            f"{result.stderr.strip() if result.stderr else ''}"
+                        )
                     results.append(result.stdout.strip())
+        except HomeAssistantError:
+            raise
         except Exception as err:
-            _LOGGER.error("AsyncSSH error on %s: %s", self._device["host"], err)
+            raise HomeAssistantError(
+                f"AsyncSSH error on {self._device['host']}: {err}"
+            ) from err
 
         return results
 
     async def async_update(self) -> None:
         """Fetch the latest visibility state from the OpenWrt router."""
         cmd = f"uci get wireless.{self._device['ifname']}.hidden"
-        outputs = await self._async_ssh_execute([cmd])
-        
-        if not outputs:
-            # Handle empty output or initialization fallback
+        try:
+            outputs = await self._async_ssh_execute([cmd])
+        except HomeAssistantError as err:
+            # Connection/command genuinely failed: mark the entity
+            # unavailable rather than guessing a state.
+            _LOGGER.error("Failed to update %s: %s", self._attr_name, err)
+            self._attr_available = False
+            return
+
+        self._attr_available = True
+
+        if not outputs or not outputs[0]:
+            # The 'hidden' option has likely never been set on this
+            # interface. Initialize it to a known value (visible).
             setup_cmd = f"uci set wireless.{self._device['ifname']}.hidden=0"
-            await self._async_ssh_execute([setup_cmd])
+            try:
+                await self._async_ssh_execute([setup_cmd, "uci commit wireless"])
+            except HomeAssistantError as err:
+                _LOGGER.error(
+                    "Failed to initialize hidden option for %s: %s",
+                    self._attr_name, err,
+                )
+                self._attr_available = False
+                return
             self._attr_is_on = False
             return
 
         # uci returns '1' if the network hidden configuration is set to true
-        self._attr_is_on = "1" in outputs[0]
+        self._attr_is_on = outputs[0].strip() == "1"
 
     async def async_turn_on(self, **kwargs: Any) -> None:
         """Turn the switch on (hide the SSID)."""
@@ -84,7 +123,15 @@ class WifiSwitch(SwitchEntity):
             "uci commit wireless",
             "wifi"
         ]
-        await self._async_ssh_execute(cmds)
+        try:
+            await self._async_ssh_execute(cmds)
+        except HomeAssistantError as err:
+            _LOGGER.error("Failed to turn on %s: %s", self._attr_name, err)
+            self._attr_available = False
+            self.async_write_ha_state()
+            return
+
+        self._attr_available = True
         self._attr_is_on = True
         self.async_write_ha_state()
 
@@ -95,6 +142,14 @@ class WifiSwitch(SwitchEntity):
             "uci commit wireless",
             "wifi"
         ]
-        await self._async_ssh_execute(cmds)
+        try:
+            await self._async_ssh_execute(cmds)
+        except HomeAssistantError as err:
+            _LOGGER.error("Failed to turn off %s: %s", self._attr_name, err)
+            self._attr_available = False
+            self.async_write_ha_state()
+            return
+
+        self._attr_available = True
         self._attr_is_on = False
         self.async_write_ha_state()

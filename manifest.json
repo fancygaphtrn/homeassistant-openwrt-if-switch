@@ -1,10 +1,10 @@
 {
   "domain": "openwrt_wifi_switch",
   "name": "OpenWRT Wifi Switch",
-  "documentation": "https://github.com/home-assistant/example-custom-config/tree/master/custom_components/example_sensor/",
+  "documentation": "https://github.com/fancygaphtrn/homeassistant-openwrt-if-switch",
   "dependencies": [],
-  "codeowners": ["Tarek Poltermann"],
+  "codeowners": ["fancygaphtrn"],
   "requirements": ["asyncssh>=2.14.0"],
   "iot_class": "local_polling",
-  "version": "0.1.0"
+  "version": "0.1.1"
 }
